@@ -11,7 +11,6 @@
 #include <stdbool.h>
 #include <math.h>
 
-
 //Screen dimension constants
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
@@ -49,7 +48,7 @@ bool init() {
         }
 
         //Create window
-        gWindow = SDL_CreateWindow("SDL Tutorial", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+        gWindow = SDL_CreateWindow("SDL Test", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
         if (gWindow == NULL) {
             printf("Window could not be created! SDL Error: %s\n", SDL_GetError());
             success = false;
@@ -111,26 +110,19 @@ SDL_Texture* loadTexture(char *str) {
 }
 
 int main(int argc, char* args[]) {
-    //Start up SDL and create window
     if (!init()) {
         printf("Failed to initialize!\n");
     } else {
-        //Load media
         if (!loadMedia()) {
             printf("Failed to load media!\n");
         } else {
-            //Main loop flag
             bool quit = false;
-
-            //Event handler
-            SDL_Event e;
+            SDL_Event e; //Event handler
 
             int x_ofs = 0, y_ofs = 0;
-            //While application is running
+
             while (!quit) {
-                //Handle events on queue
                 while (SDL_PollEvent(&e) != 0) {
-                    //User requests quit
                     if (e.type == SDL_QUIT) {
                         quit = true;
                     } else if (e.type == SDL_KEYDOWN) {
@@ -162,7 +154,7 @@ int main(int argc, char* args[]) {
                 SDL_RenderClear(gRenderer);
 
                 //Render red filled quad
-                SDL_Rect fillRect = {SCREEN_WIDTH / 4 + x_ofs * 4, SCREEN_HEIGHT / 4 + y_ofs * 4, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2};
+                SDL_Rect fillRect = {SCREEN_WIDTH / 4 + x_ofs * 4, SCREEN_HEIGHT / 4 + y_ofs * 4, SCREEN_WIDTH / 32, SCREEN_WIDTH / 32};
                 SDL_SetRenderDrawColor(gRenderer, 0xFF, 0x00, 0x00, 0xFF);
                 SDL_RenderFillRect(gRenderer, &fillRect);
 
@@ -172,12 +164,12 @@ int main(int argc, char* args[]) {
                 SDL_RenderDrawRect(gRenderer, &outlineRect);
 
                 //Draw blue horizontal line
-                SDL_SetRenderDrawColor(gRenderer, 0x00, 0x00, 0xFF, 0xFF);
+                SDL_SetRenderDrawColor(gRenderer, 0xFF, 0xFF, 0x00, 0xFF);
                 SDL_RenderDrawLine(gRenderer, 0, SCREEN_HEIGHT / 2, SCREEN_WIDTH, SCREEN_HEIGHT / 2);
 
                 //Draw vertical line of yellow dots
                 SDL_SetRenderDrawColor(gRenderer, 0xFF, 0xFF, 0x00, 0xFF);
-                for (int i = 0; i < SCREEN_HEIGHT; i += 4) {
+                for (int i = 0; i <= SCREEN_HEIGHT; i += 8) {
                     SDL_RenderDrawPoint(gRenderer, SCREEN_WIDTH / 2, i);
                 }
 

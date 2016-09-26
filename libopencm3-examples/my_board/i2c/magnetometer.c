@@ -1,3 +1,23 @@
+/*
+ * This file is part of the libopencm3 project.
+ *
+ * Copyright (C) 2009 Uwe Hermann <uwe@hermann-uwe.de>,
+ * Copyright (C) 2010 Piotr Esden-Tempski <piotr@esden.net>
+ *
+ * This library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this library.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include <stdio.h>
 #include <string.h>
 
@@ -119,8 +139,9 @@ static void i2c_stop(void) {
 
 static void i2c_write_addr(uint8_t addr, int rw) {
     uint32_t i2c = I2C2;
-
+    /* Say to what address we want to talk to. */
     i2c_send_7bit_address(i2c, addr, rw);
+    /* Waiting for address is transferred. */
     while (!(I2C_SR1(i2c) & I2C_SR1_ADDR));
     /* Cleaning ADDR condition sequence. */
     (void) I2C_SR2(i2c);
@@ -130,7 +151,7 @@ static uint8_t i2c_read(int ack) {
     uint32_t i2c = I2C2;
     if (ack) i2c_enable_ack(i2c);
     else i2c_disable_ack(i2c);
-    while (!(I2C_SR1(i2c) & I2C_SR1_RxNE));
+    while (!(I2C_SR1(i2c) & I2C_SR1_BTF));
     return i2c_get_data(i2c);
 }
 
@@ -164,27 +185,72 @@ static void i2c_write(uint8_t data) {
     while (!(I2C_SR1(i2c) & (I2C_SR1_BTF | I2C_SR1_TxE)));
 }
 
-#define DEV_ADDR        0x1C //?
-#define WHO_AM_I        0x0D
+//#define DEV_ADDR        (0x1E << 1)
+#define DEV_ADDR        0x1E
+#define STATUS_REG      0x08
+#define CR_A            0x00
+#define CR_B            0x01
+#define MODE            0x02
+#define DATA_OUT        0x03
+#define ID_REG_A        0x0A
+
+static void get_status() {
+    uint32_t i2c = I2C2;
+
+    i2c_start();
+    i2c_write_addr(DEV_ADDR, I2C_WRITE);
+    i2c_write(STATUS_REG);
+    i2c_stop();
+
+    i2c_start();
+    i2c_write_addr(DEV_ADDR, I2C_READ);
+    //    i2c_disable_ack(i2c);
+    //
+    //    while (!(I2C_SR1(i2c) & I2C_SR1_RxNE));
+    //    uint8_t id = i2c_get_data(i2c);
+    //    i2c_stop();
+
+    uint8_t st[3];
+    i2c_read_arr(st, 3);
+    printf("status: %x\n", st[0]);
+
+    //printf("status: %d\n", id);
+
+    //     i2c_enable_ack(i2c);
+    //     while (!(I2C_SR1(i2c) & I2C_SR1_RxNE));
+    //     id[0] = i2c_get_data(i2c);
+    //
+    //     while (!(I2C_SR1(i2c) & I2C_SR1_RxNE));
+    //     i2c_disable_ack(i2c);
+    //     i2c_stop();
+    //
+    //     id[1] = i2c_get_data(i2c);
+    //
+    //     while (!(I2C_SR1(i2c) & I2C_SR1_RxNE));
+    //     id[2] = i2c_get_data(i2c);
+    //     /* Wait until STOP if cleared */
+    //     i2c_enable_ack(i2c);
+
+}
+
+uint8_t id[3];
 
 static void get_id(void) {
     uint32_t i2c = I2C2;
 
     i2c_start();
     i2c_write_addr(DEV_ADDR, I2C_WRITE);
-    i2c_write(WHO_AM_I);
+    i2c_write(ID_REG_A);
     i2c_stop();
+
+    /*
+     * Now we send another START condition (repeated START) and then
+     * transfer the destination but with flag READ.
+     */
 
     i2c_start();
     i2c_write_addr(DEV_ADDR, I2C_READ);
-
-    i2c_disable_ack(i2c);
-    i2c_stop();
-
-    while (!(I2C_SR1(i2c) & I2C_SR1_RxNE));
-    uint8_t id = i2c_get_data(i2c);
-
-    printf("ID: %d\n", id);
+    i2c_read_arr(id, 3);
 
     //     i2c_enable_ack(i2c);
     //     while (!(I2C_SR1(i2c) & I2C_SR1_RxNE));
@@ -202,9 +268,65 @@ static void get_id(void) {
     //     i2c_enable_ack(i2c);
 }
 
+int x, y, z;
+#include <math.h>
+#define RAD_TO_DEG 57.296
+
+void measure() {
+    float heading;
+    int16_t hh;
+    /* GAIN */
+    i2c_start();
+    i2c_write_addr(DEV_ADDR, I2C_WRITE);
+    i2c_write(CR_B);
+    i2c_write(0xe0);
+    i2c_stop();
+
+    /* Set cont. measurement mode */
+    i2c_start();
+    i2c_write_addr(DEV_ADDR, I2C_WRITE);
+    i2c_write(MODE);
+    i2c_write(0x00);
+    i2c_stop();
+
+    delay_ms(1); // 6
+
+    /* Start reading @ DATA_OUT */
+    i2c_start();
+    i2c_write_addr(DEV_ADDR, I2C_WRITE);
+    i2c_write(DATA_OUT);
+    i2c_stop();
+
+    /* Read axis */
+    i2c_start();
+    i2c_write_addr(DEV_ADDR, I2C_READ);
+    uint8_t buf[6];
+    i2c_read_arr(buf, 6);
+
+    x = (buf[0] << 8) | buf[1];
+    z = (buf[2] << 8) | buf[3];
+    y = (buf[4] << 8) | buf[5];
+
+    //i2c_stop();
+
+    printf("x: %d y: %d z: %d\n", (int16_t) x, (int16_t) y, (int16_t) z);
+
+    //     heading = atan2f(y*4.35, x*4.35);
+    //     float PI = 3.14159;
+
+    //    //Correct for when signs are reversed.
+    //     if(heading < 0) heading += 2*PI;
+    //     if(heading > 2*PI) heading -= 2*PI;
+    //     hh = (heading*RAD_TO_DEG);
+    //     printf("deg :: %d\n", hh);
+}
+
 void sys_tick_handler(void) {
     gpio_toggle(GPIOC, LED_PIN);
-    get_id();
+    //get_id();
+    //printf("ID: %c%c%c\n", id[0], id[1], id[2]);
+    //measure();
+    get_status();
 }
 
 int main(void) {

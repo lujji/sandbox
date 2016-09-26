@@ -1,0 +1,25 @@
+main.c: In function 'get_id':
+main.c:203:14: warning: unused variable 'i2c' [-Wunused-variable]
+     uint32_t i2c = I2C2;
+              ^
+main.c: At top level:
+main.c:239:6: warning: no previous prototype for 'measure' [-Wmissing-prototypes]
+ void measure() {
+      ^
+main.c: In function 'measure':
+main.c:241:13: warning: unused variable 'hh' [-Wunused-variable]
+     int16_t hh;
+             ^
+main.c:240:11: warning: unused variable 'heading' [-Wunused-variable]
+     float heading;
+           ^
+main.c: At top level:
+main.c:154:16: warning: 'i2c_read' defined but not used [-Wunused-function]
+ static uint8_t i2c_read(int ack) {
+                ^
+main.c:202:13: warning: 'get_id' defined but not used [-Wunused-function]
+ static void get_id(void) {
+             ^
+Size:
+   text	   data	    bss	    dec	    hex	filename
+   5868	    112	     28	   6008	   1778	main.elf

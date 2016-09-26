@@ -23,9 +23,9 @@ LDSCRIPT = ../my_board.ld
 
 include ../../Makefile.include
 
-J_LINK = /home/lujji/local/JLink/JLinkExe
-OOCD   = /home/lujji/local/openocd/bin/openocd
-TRACE  = /home/lujji/Downloads/arm/stlink-trace/stlink-trace -c72
+J_LINK = ~/local/JLink/JLinkExe
+OOCD   = ~/local/openocd/bin/openocd
+TRACE  = ~/local/stlink-trace/stlink-trace -c72
 
 jlink-flash: $(BINARY).bin
 	@printf "Starting J-Link..\n"

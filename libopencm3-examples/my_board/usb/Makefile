@@ -23,7 +23,7 @@ LDSCRIPT = ../my_board.ld
 
 include ../../Makefile.include
 
-J_LINK = /home/lujji/local/JLink/JLinkExe
+J_LINK = /home/vlm/local/JLink/JLinkExe
 OOCD   = /home/lujji/local/openocd/bin/openocd
 
 jlink-flash: $(BINARY).bin
