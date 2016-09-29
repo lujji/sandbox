@@ -1,5 +1,5 @@
 connect
 r
-loadbin "fancyblink.bin", 0x8000000
+loadbin "usb.bin", 0x8000000
 r
 q

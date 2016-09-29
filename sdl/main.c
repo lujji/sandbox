@@ -154,7 +154,8 @@ int main(int argc, char* args[]) {
                 SDL_RenderClear(gRenderer);
 
                 //Render red filled quad
-                SDL_Rect fillRect = {SCREEN_WIDTH / 4 + x_ofs * 4, SCREEN_HEIGHT / 4 + y_ofs * 4, SCREEN_WIDTH / 32, SCREEN_WIDTH / 32};
+                
+                SDL_Rect fillRect = {SCREEN_WIDTH / 4 + x_ofs * 4, SCREEN_HEIGHT / 4 + y_ofs * 4, SCREEN_WIDTH / 4, SCREEN_WIDTH / 4};
                 SDL_SetRenderDrawColor(gRenderer, 0xFF, 0x00, 0x00, 0xFF);
                 SDL_RenderFillRect(gRenderer, &fillRect);
 

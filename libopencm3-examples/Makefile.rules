@@ -44,6 +44,10 @@ STYLECHECK	:= /checkpatch.pl
 STYLECHECKFLAGS	:= --no-tree -f --terse --mailback
 STYLECHECKFILES	:= $(shell find . -name '*.[ch]')
 
+J_LINK  = ~/local/JLink/JLinkExe
+J_TRACE = ~/local/JLink/JLinkSWOViewer
+OOCD    = ~/local/openocd/bin/openocd
+
 
 ###############################################################################
 # Source files
@@ -103,8 +107,8 @@ CPPFLAGS	+= -I$(INCLUDE_DIR) $(DEFS)
 ###############################################################################
 # Linker flags
 LDFLAGS		+= --static -nostartfiles
-LDFLAGS 	+= --specs=nano.specs
-LDFLAGS 	+= --specs=nosys.specs
+#LDFLAGS 	+= --specs=nano.specs
+#LDFLAGS 	+= --specs=nosys.specs
 LDFLAGS		+= -L$(LIB_DIR)
 LDFLAGS		+= -T$(LDSCRIPT)
 LDFLAGS		+= -Wl,-Map=$(*).map
@@ -204,6 +208,16 @@ styleclean: $(STYLECHECKFILES:=.styleclean)
 %.stlink-flash: %.bin
 	@printf "  FLASH  $<\n"
 	$(Q)$(STFLASH) write $(*).bin 0x8000000
+
+jlink-flash: $(BINARY).bin
+	@printf "Starting J-Link..\n"
+	@# IMPORTANT: Don't use "resume", only "reset" will work correctly!
+	@printf "connect\nr\nloadbin \"$(BINARY).bin\", 0x8000000\nr\nq\n" > flash.jlink
+	$(J_LINK) -device $(J_CPU) -if swd -speed 4000 ./flash.jlink
+	rm -f flash.jlink
+
+oocd: $(BINARY).elf
+	$(OOCD) -f config.cfg -c "program $(BINARY).elf reset verify exit"
 
 ifeq ($(STLINK_PORT),)
 ifeq ($(BMP_PORT),)
