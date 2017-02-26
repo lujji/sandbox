@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <string.h>
+
+#include <libopencm3/cm3/nvic.h>
+#include <libopencm3/cm3/systick.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
-#include <libopencm3/stm32/usart.h>
 #include <libopencm3/stm32/i2c.h>
 
 #include <libopencm3/stm32/dbgmcu.h>
@@ -12,30 +14,57 @@
 
 #define LED_PIN         GPIO13
 
-int _write(int file, char *ptr, int len);
+int _write(int fp, char *c, int len);
+static void delay_ms(int ms);
 
 static void clock_setup(void) {
     rcc_clock_setup_in_hse_8mhz_out_72mhz();
 
+    /* Enable GPIOC clock. */
     rcc_periph_clock_enable(RCC_GPIOC);
 }
 
 static void gpio_setup(void) {
-    /* Set GPIO12 on Port C) to 'output push-pull' */
-    gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_50_MHZ,
-            GPIO_CNF_OUTPUT_PUSHPULL, LED_PIN);
+    /* Set GPIO6/7/8/9 (in GPIO port C) to 'output push-pull'. */
+    gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, LED_PIN);
+}
+
+static void systick_setup() {
+    systick_set_clocksource(STK_CSR_CLKSOURCE_AHB_DIV8);
+    /* SysTick interrupt every N clock pulses: set reload to N-1 */
+    systick_set_reload(4000000);
+    systick_interrupt_enable();
+    systick_counter_enable();
+}
+
+static void trace_send_blocking(char c) {
+    while (!(ITM_STIM8(0) & ITM_STIM_FIFOREADY));
+    ITM_STIM8(0) = c;
+}
+
+int _write(int fp, char *c, int len) {
+    (void) fp;
+    int i;
+    for (i = 0; i < len; i++) {
+        if (c[i] == '\n') trace_send_blocking('\r');
+        trace_send_blocking(c[i]);
+    }
+    return i;
 }
 
 static void delay_ms(int ms) {
     for (int j = 0; j < ms; j++)
-        for (int i = 0; i < 4000000; i++)
+        for (int i = 0; i < 4000000; i++) /* Wait a bit. */
             __asm__("nop");
 }
+
+/************************ I2C ********************************/
 
 static void i2c_setup(void) {
     /* Enable clocks for I2C2 and AFIO. */
     rcc_periph_clock_enable(RCC_I2C2);
     rcc_periph_clock_enable(RCC_AFIO);
+    rcc_periph_clock_enable(RCC_GPIOB);
 
     /* Set alternate functions for the SCL and SDA pins of I2C2. */
     gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_50_MHZ,
@@ -75,19 +104,12 @@ static void i2c_setup(void) {
     i2c_peripheral_enable(I2C2);
 }
 
-#define DEV_ADDR        (0x1E << 1)
-#define DEV_ADDR        0x1E
-#define CR_A            0x00
-#define CR_B            0x01
-#define MODE            0x02
-#define DATA_OUT        0x03
-#define ID_REG_A        0x0A
-
 static void i2c_start(void) {
     uint32_t i2c = I2C2;
     i2c_send_start(i2c);
     /* Waiting for START is send and switched to master mode. */
     while (!((I2C_SR1(i2c) & I2C_SR1_SB) & (I2C_SR2(i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY))));
+    //while (!(I2C_SR1(i2c) & I2C_SR1_SB));
 }
 
 static void i2c_stop(void) {
@@ -113,10 +135,82 @@ static uint8_t i2c_read(int ack) {
     return i2c_get_data(i2c);
 }
 
+static void i2c_read_arr(uint8_t *buf, int len) {
+    int i2c = I2C2;
+
+    i2c_enable_ack(i2c);
+    while (len > 2) {
+        /* Read into buffer */
+        while (!(I2C_SR1(i2c) & I2C_SR1_RxNE));
+        *(buf++) = i2c_get_data(i2c);
+        len--;
+    }
+
+    /* Read last 2 bytes */
+    while (!(I2C_SR1(i2c) & I2C_SR1_RxNE)); // should be BTF?
+    i2c_disable_ack(i2c);
+    i2c_stop();
+    *(buf++) = i2c_get_data(i2c);
+
+
+    while (!(I2C_SR1(i2c) & I2C_SR1_RxNE));
+    *buf = i2c_get_data(i2c);
+
+    i2c_enable_ack(i2c);
+}
+
 static void i2c_write(uint8_t data) {
     uint32_t i2c = I2C2;
     i2c_send_data(i2c, data);
     while (!(I2C_SR1(i2c) & (I2C_SR1_BTF | I2C_SR1_TxE)));
+}
+
+//#define DEV_ADDR        (0x1E << 1)
+#define DEV_ADDR        0x1E
+#define STATUS_REG      0x08
+#define CR_A            0x00
+#define CR_B            0x01
+#define MODE            0x02
+#define DATA_OUT        0x03
+#define ID_REG_A        0x0A
+
+static void get_status() {
+    uint32_t i2c = I2C2;
+
+    i2c_start();
+    i2c_write_addr(DEV_ADDR, I2C_WRITE);
+    i2c_write(STATUS_REG);
+    i2c_stop();
+
+    i2c_start();
+    i2c_write_addr(DEV_ADDR, I2C_READ);
+    //    i2c_disable_ack(i2c);
+    //
+    //    while (!(I2C_SR1(i2c) & I2C_SR1_RxNE));
+    //    uint8_t id = i2c_get_data(i2c);
+    //    i2c_stop();
+
+    uint8_t st[3];
+    i2c_read_arr(st, 3);
+    printf("status: %x\n", st[0]);
+
+    //printf("status: %d\n", id);
+
+    //     i2c_enable_ack(i2c);
+    //     while (!(I2C_SR1(i2c) & I2C_SR1_RxNE));
+    //     id[0] = i2c_get_data(i2c);
+    //
+    //     while (!(I2C_SR1(i2c) & I2C_SR1_RxNE));
+    //     i2c_disable_ack(i2c);
+    //     i2c_stop();
+    //
+    //     id[1] = i2c_get_data(i2c);
+    //
+    //     while (!(I2C_SR1(i2c) & I2C_SR1_RxNE));
+    //     id[2] = i2c_get_data(i2c);
+    //     /* Wait until STOP if cleared */
+    //     i2c_enable_ack(i2c);
+
 }
 
 uint8_t id[3];
@@ -136,81 +230,92 @@ static void get_id(void) {
 
     i2c_start();
     i2c_write_addr(DEV_ADDR, I2C_READ);
+    i2c_read_arr(id, 3);
 
-    id[0] = i2c_read(1);
-    id[1] = i2c_read(1);
+    //     i2c_enable_ack(i2c);
+    //     while (!(I2C_SR1(i2c) & I2C_SR1_RxNE));
+    //     id[0] = i2c_get_data(i2c);
+    //
+    //     while (!(I2C_SR1(i2c) & I2C_SR1_RxNE));
+    //     i2c_disable_ack(i2c);
+    //     i2c_stop();
+    //
+    //     id[1] = i2c_get_data(i2c);
+    //
+    //     while (!(I2C_SR1(i2c) & I2C_SR1_RxNE));
+    //     id[2] = i2c_get_data(i2c);
+    //     /* Wait until STOP if cleared */
+    //     i2c_enable_ack(i2c);
+}
 
-    i2c_disable_ack(i2c);
-    id[2] = i2c_get_data(i2c);
+int x, y, z;
+#include <math.h>
+#define RAD_TO_DEG 57.296
+
+void measure() {
+    float heading;
+    int16_t hh;
+    /* GAIN */
+    i2c_start();
+    i2c_write_addr(DEV_ADDR, I2C_WRITE);
+    i2c_write(CR_B);
+    i2c_write(0xe0);
     i2c_stop();
 
-    /* 2-byte receive is a special case. See datasheet POS bit. */
-    //I2C_CR1(i2c) |= (I2C_CR1_POS | I2C_CR1_ACK);
-    /*
-     * Yes they mean it: we have to generate the STOP condition before
-     * saving the 1st byte.
-     */
+    /* Set cont. measurement mode */
+    i2c_start();
+    i2c_write_addr(DEV_ADDR, I2C_WRITE);
+    i2c_write(MODE);
+    i2c_write(0x00);
+    i2c_stop();
+
+    delay_ms(1); // 6
+
+    /* Start reading @ DATA_OUT */
+    i2c_start();
+    i2c_write_addr(DEV_ADDR, I2C_WRITE);
+    i2c_write(DATA_OUT);
+    i2c_stop();
+
+    /* Read axis */
+    i2c_start();
+    i2c_write_addr(DEV_ADDR, I2C_READ);
+    uint8_t buf[6];
+    i2c_read_arr(buf, 6);
+
+    x = (buf[0] << 8) | buf[1];
+    z = (buf[2] << 8) | buf[3];
+    y = (buf[4] << 8) | buf[5];
+
+    //i2c_stop();
+
+    printf("x: %d y: %d z: %d\n", (int16_t) x, (int16_t) y, (int16_t) z);
+
+    //     heading = atan2f(y*4.35, x*4.35);
+    //     float PI = 3.14159;
+
+    //    //Correct for when signs are reversed.
+    //     if(heading < 0) heading += 2*PI;
+    //     if(heading > 2*PI) heading -= 2*PI;
+    //     hh = (heading*RAD_TO_DEG);
+    //     printf("deg :: %d\n", hh);
 }
 
-static void uart_setup(void) {
-    /* Enable clock for UART peripheral */
-    rcc_periph_clock_enable(RCC_USART1);
-    rcc_periph_clock_enable(RCC_GPIOA);
-
-    /* Setup GPIO pin GPIO_USART1_TX. */
-    gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_50_MHZ,
-            GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, GPIO_USART1_TX);
-
-    /* Setup UART parameters. */
-    usart_set_baudrate(USART1, 38400);
-    usart_set_databits(USART1, 8);
-    usart_set_stopbits(USART1, USART_STOPBITS_1);
-    usart_set_mode(USART1, USART_MODE_TX);
-    usart_set_parity(USART1, USART_PARITY_NONE);
-    usart_set_flow_control(USART1, USART_FLOWCONTROL_NONE);
-
-    /* Finally enable the USART. */
-    usart_enable(USART1);
-}
-
-static void trace_send_blocking(char c) {
-    while (!(ITM_STIM8(0) & ITM_STIM_FIFOREADY));
-    ITM_STIM8(0) = c;
-}
-
-int _write(int fp, char *c, int len) {
-    (void) fp;
-    int i;
-    for (i = 0; i < len; i++) {
-        if (c[i] == '\n') trace_send_blocking('\r');
-        trace_send_blocking(c[i]);
-    }
-    return i;
-}
-
-int _write_uart(int file, char *ptr, int len) {
-    (void) file;
-    int i;
-    for (i = 0; i < len; i++)
-        usart_send_blocking(USART1, ptr[i]);
-    return i;
+void sys_tick_handler(void) {
+    gpio_toggle(GPIOC, LED_PIN);
+    //get_id();
+    //printf("ID: %c%c%c\n", id[0], id[1], id[2]);
+    //measure();
+    get_status();
 }
 
 int main(void) {
     clock_setup();
     gpio_setup();
-    uart_setup();
+    systick_setup();
     i2c_setup();
 
-    gpio_set(GPIOC, LED_PIN);
-
-    int i = 0;
     while (1) {
-        gpio_toggle(GPIOC, LED_PIN);
-        //get_id();
-        //printf("Sensor ID: %d%d%d\n", id[0], id[1], id[2]);
-        printf("[%d]: Hello, world\n", i++);
-        printf("[%d]: Hello, world\n", i++);
-        //delay_ms(1);
+        //do nothing
     }
 }

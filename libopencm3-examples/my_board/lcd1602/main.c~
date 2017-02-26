@@ -1,0 +1,112 @@
+#include <stdio.h>
+#include <string.h>
+
+#include <libopencm3/stm32/rcc.h>
+#include <libopencm3/stm32/gpio.h>
+
+#define LED_PIN         GPIO13 // PC13
+
+
+static void delay_ms(int ms) {
+    for (int j = 0; j < ms; j++)
+        for (int i = 0; i < 400000; i++) /* Wait a bit. */
+            __asm__("nop");
+}
+
+void pin_write(uint16_t gpio, int value) {
+    if (value)
+        gpio_set(GPIOA, gpio);
+    else
+        gpio_clear(GPIOA, gpio);
+}
+
+void delay() {
+    for (int i = 0; i < 400; i++) /* Wait a bit. */
+        __asm__("nop");
+}
+
+void LCD_write4(uint8_t cmd) {
+    gpio_set(GPIOA, GPIO0);
+    pin_write(GPIO2, cmd & (1 << 7));
+    pin_write(GPIO3, cmd & (1 << 6));
+    pin_write(GPIO4, cmd & (1 << 5));
+    pin_write(GPIO5, cmd & (1 << 4));
+    delay();
+    gpio_clear(GPIOA, GPIO0);
+    delay();
+}
+
+/*
+ * E  -> A0
+ * RS -> A1
+ * D4 -> A5
+ * D5 -> A4
+ * D6 -> A3
+ * D7 -> A2
+ */
+void LCD_write(uint8_t cmd) {
+    gpio_set(GPIOA, GPIO0);
+    pin_write(GPIO2, cmd & (1 << 7));
+    pin_write(GPIO3, cmd & (1 << 6));
+    pin_write(GPIO4, cmd & (1 << 5));
+    pin_write(GPIO5, cmd & (1 << 4));
+    gpio_clear(GPIOA, GPIO0);
+    delay();
+
+    gpio_set(GPIOA, GPIO0);
+    pin_write(GPIO2, cmd & (1 << 3));
+    pin_write(GPIO3, cmd & (1 << 2));
+    pin_write(GPIO4, cmd & (1 << 1));
+    pin_write(GPIO5, cmd & (1 << 0));
+    gpio_clear(GPIOA, GPIO0);
+    delay();
+}
+
+void LCD_init(void) {
+    gpio_clear(GPIOA, GPIO1); // command mode
+
+//     for(int i=0; i<2; i++) {
+//         LCD_write4(0b00000011);
+//         delay_ms(1);
+//     }
+
+    //LCD_write(0b00100000);
+    LCD_write4(0b00100000);
+    LCD_write4(0b00100000);
+    LCD_write4(0b00100000 >> 4);
+
+    LCD_write(0b00001110);
+    LCD_write(0b00000110);
+//     LCD_write4(0x28);
+//     LCD_write4(0x0c);
+//     LCD_write4(0x06);
+
+//     LCD_write(0b00100000);
+//     LCD_write(0b00001110);
+//     LCD_write(0b00000110);
+
+    gpio_set(GPIOA, GPIO1); // data mode
+    LCD_write('H');
+
+}
+
+void gpio_init(void) {
+    gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, LED_PIN);
+    gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, GPIO5 | GPIO4 | GPIO3 | GPIO2 | GPIO1 | GPIO0);
+}
+
+void main() {
+    rcc_clock_setup_in_hse_8mhz_out_72mhz();
+    rcc_periph_clock_enable(RCC_GPIOC);
+    rcc_periph_clock_enable(RCC_GPIOA);
+    gpio_init();
+
+    LCD_init();
+
+    int i = 'a';
+    while (1) {
+        gpio_toggle(GPIOC, LED_PIN);
+        delay_ms(10);
+        LCD_write(i++);
+    }
+}

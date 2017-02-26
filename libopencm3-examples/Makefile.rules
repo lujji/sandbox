@@ -47,6 +47,7 @@ STYLECHECKFILES	:= $(shell find . -name '*.[ch]')
 J_LINK  = ~/local/JLink/JLinkExe
 J_TRACE = ~/local/JLink/JLinkSWOViewer
 OOCD    = ~/local/openocd/bin/openocd
+STLINK_TRACE = ~/Downloads/arm/stlink-trace
 
 
 ###############################################################################
@@ -54,7 +55,13 @@ OOCD    = ~/local/openocd/bin/openocd
 
 LDSCRIPT	?= $(BINARY).ld
 
+ASRC		= $(wildcard lib/qfplib/*.s lib/qfplib/*.S)
+SRCS		= $(wildcard lib/*.c)
+
 OBJS		+= $(BINARY).o
+#OBJS		+= $(wildcard lib/*.o)
+OBJS		+= $(SRCS:.c=.o)
+OBJS		+= $(ASRC:.s=.o)
 
 
 ifeq ($(strip $(OPENCM3_DIR)),)
@@ -84,9 +91,10 @@ SCRIPT_DIR	= $(OPENCM3_DIR)/scripts
 
 ###############################################################################
 # C flags
-CFLAGS		+= -Os -g
+CFLAGS		+= -Os
+#CFLAGS		+= -flto
 CFLAGS		+= -Wextra -Wshadow -Wimplicit-function-declaration
-CFLAGS		+= -Wredundant-decls -Wmissing-prototypes
+CFLAGS		+= -Wredundant-decls
 CFLAGS		+= -fno-common -ffunction-sections -fdata-sections
 CFLAGS		+= -std=gnu11
 
@@ -107,9 +115,10 @@ CPPFLAGS	+= -I$(INCLUDE_DIR) $(DEFS)
 ###############################################################################
 # Linker flags
 LDFLAGS		+= --static -nostartfiles
-#LDFLAGS 	+= --specs=nano.specs
-#LDFLAGS 	+= --specs=nosys.specs
+LDFLAGS 	+= --specs=nano.specs
+LDFLAGS 	+= --specs=nosys.specs
 LDFLAGS		+= -L$(LIB_DIR)
+#LDFLAGS		+= -flto
 LDFLAGS		+= -T$(LDSCRIPT)
 LDFLAGS		+= -Wl,-Map=$(*).map
 LDFLAGS		+= -Wl,--gc-sections
@@ -187,7 +196,7 @@ size:
 
 clean:
 	@#printf "  CLEAN\n"
-	$(Q)$(RM) *.o *.d *.elf *.bin *.hex *.srec *.list *.map
+	$(Q)$(RM) *.o *.d *.elf *.bin *.hex *.srec *.list *.map lib/*.o lib/*.d
 
 stylecheck: $(STYLECHECKFILES:=.stylecheck)
 styleclean: $(STYLECHECKFILES:=.styleclean)
